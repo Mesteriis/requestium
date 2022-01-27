@@ -83,13 +83,12 @@ class Session(requests.Session):
             chrome_options.binary_location = self.webdriver_options['binary_location']
 
         if 'arguments' in self.webdriver_options:
-            if isinstance(self.webdriver_options['arguments'], list):
-                for arg in self.webdriver_options['arguments']:
-                    chrome_options.add_argument(arg)
-            else:
+            if not isinstance(self.webdriver_options['arguments'], list):
                 raise Exception('A list is needed to use \'arguments\' option. Found {}'.format(
                     type(self.webdriver_options['arguments'])))
 
+            for arg in self.webdriver_options['arguments']:
+                chrome_options.add_argument(arg)
         # Create driver process
         return RequestiumChrome(self.webdriver_path,
                                 chrome_options=chrome_options,
@@ -102,11 +101,12 @@ class Session(requests.Session):
         transfer the cookies which belong to that domain. The domain defaults to our last visited
         site if not provided.
         """
-        if not domain and self._last_requests_url:
-            domain = tldextract.extract(self._last_requests_url).registered_domain
-        elif not domain and not self._last_requests_url:
-            raise Exception('Trying to transfer cookies to selenium without specifying a domain '
-                            'and without having visited any page in the current session')
+        if not domain:
+            if self._last_requests_url:
+                domain = tldextract.extract(self._last_requests_url).registered_domain
+            else:
+                raise Exception('Trying to transfer cookies to selenium without specifying a domain '
+                                'and without having visited any page in the current session')
 
         # Transfer cookies
         for c in [c for c in self.cookies if domain in c.domain]:
@@ -249,13 +249,17 @@ class DriverMixin(object):
         We only compare name, value and domain, as the rest can produce false negatives.
         We are a bit lenient when comparing domains.
         """
-        for driver_cookie in self.get_cookies():
-            if (cookie['name'] == driver_cookie['name'] and
-                cookie['value'] == driver_cookie['value'] and
-                (cookie['domain'] == driver_cookie['domain'] or
-                 '.' + cookie['domain'] == driver_cookie['domain'])):
-                return True
-        return False
+        return any(
+            (
+                cookie['name'] == driver_cookie['name']
+                and cookie['value'] == driver_cookie['value']
+                and (
+                    cookie['domain'] == driver_cookie['domain']
+                    or '.' + cookie['domain'] == driver_cookie['domain']
+                )
+            )
+            for driver_cookie in self.get_cookies()
+        )
 
     def ensure_element_by_id(self, selector, state="present", timeout=None):
         return self.ensure_element('id', selector, state, timeout)
